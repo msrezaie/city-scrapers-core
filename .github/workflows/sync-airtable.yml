@@ -1,0 +1,68 @@
+name: Sync spiders to Airtable (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: 'Python version to use'
+        required: false
+        type: string
+        default: '3.11'
+      core-ref:
+        description: 'Branch/tag/SHA of city-scrapers-core to use for the script'
+        required: false
+        type: string
+        default: 'main'
+      CS_AIRTABLE_BASE_ID:
+        required: true
+        type: string
+      CS_SLUGS_TABLE_ID:
+        required: true
+        type: string
+      CS_BACKLOG_TABLE_ID:
+        required: true
+        type: string
+    secrets:
+      CS_AIRTABLE_PAT:
+        required: true
+
+jobs:
+  sync-airtable:
+    runs-on: ubuntu-latest
+    steps:
+      # Check out the consumer repo (the one whose PR triggered this).
+      # No `repository:` means default — the caller's repo.
+      - name: Check out consumer repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Check out city-scrapers-core into a sibling directory so the script
+      # is available to run.
+      - name: Check out city-scrapers-core
+        uses: actions/checkout@v4
+        with:
+          repository: City-Bureau/city-scrapers-core
+          ref: ${{ inputs.core-ref }}
+          path: .city-scrapers-core
+
+      - uses: tj-actions/changed-files@v45
+        id: changed
+        with:
+          files: city_scrapers/spiders/**.py
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Install script dependencies
+        run: pip install pyairtable python-decouple
+
+      - name: Sync spiders to Airtable
+        env:
+          CS_AIRTABLE_PAT: ${{ secrets.CS_AIRTABLE_PAT }}
+          CS_AIRTABLE_BASE_ID: ${{ inputs.CS_AIRTABLE_BASE_ID }}
+          CS_SLUGS_TABLE_ID: ${{ inputs.CS_SLUGS_TABLE_ID }}
+          CS_BACKLOG_TABLE_ID: ${{ inputs.CS_BACKLOG_TABLE_ID }}
+        run: python .city-scrapers-core/.github/scripts/sync_airtable.py ${{ steps.changed.outputs.all_changed_files }}
