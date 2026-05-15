@@ -1,0 +1,70 @@
+# Triggered by the consumer's workflow_run stub when the parse workflow
+# completes. Runs in the base repo's context with secrets/variables
+# available. Reads the JSON artifact produced by the parse workflow and
+# writes to Airtable.
+#
+# SECURITY: This workflow never reads PR source code. It only consumes the
+# pre-parsed JSON artifact, which is validated by json_to_airtable.py before
+# any Airtable calls.
+
+name: Sync spiders to Airtable (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      core-ref:
+        required: false
+        type: string
+        default: 'main'
+      parse-run-id:
+        description: 'ID of the parse workflow run whose artifact we should consume'
+        required: true
+        type: string
+      CS_AIRTABLE_BASE_ID:
+        required: true
+        type: string
+      CS_SLUGS_TABLE_ID:
+        required: true
+        type: string
+      CS_BACKLOG_TABLE_ID:
+        required: true
+        type: string
+    secrets:
+      CS_AIRTABLE_PAT:
+        required: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out city-scrapers-core
+        uses: actions/checkout@v4
+        with:
+          repository: City-Bureau/city-scrapers-core
+          ref: ${{ inputs.core-ref }}
+          path: .city-scrapers-core
+
+      - name: Download parse artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: spiders-artifact
+          path: artifact
+          # The artifact was produced by the parse run, not this run.
+          run-id: ${{ inputs.parse-run-id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install script dependencies
+        run: pip install pyairtable python-decouple
+
+      - name: Sync to Airtable
+        env:
+          CS_AIRTABLE_PAT: ${{ secrets.CS_AIRTABLE_PAT }}
+          CS_AIRTABLE_BASE_ID: ${{ inputs.CS_AIRTABLE_BASE_ID }}
+          CS_SLUGS_TABLE_ID: ${{ inputs.CS_SLUGS_TABLE_ID }}
+          CS_BACKLOG_TABLE_ID: ${{ inputs.CS_BACKLOG_TABLE_ID }}
+        run: python .city-scrapers-core/.github/scripts/sync_from_json.py artifact/spiders.json
