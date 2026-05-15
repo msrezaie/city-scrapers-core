@@ -4,7 +4,7 @@
 # writes to Airtable.
 #
 # SECURITY: This workflow never reads PR source code. It only consumes the
-# pre-parsed JSON artifact, which is validated by json_to_airtable.py before
+# pre-parsed JSON artifact, which is validated by sync_from_json.py before
 # any Airtable calls.
 
 name: Sync spiders to Airtable (reusable)

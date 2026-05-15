@@ -10,7 +10,7 @@ import json
 import sys
 from pathlib import Path
 
-from decouple import config, UndefinedValueError
+from decouple import config
 from pyairtable import Api
 from pyairtable.formulas import match
 
@@ -195,11 +195,13 @@ def main():
         spiders = entry["spiders"]
         if not spiders:
             continue
-        
+
         program_id = None
         for spider in spiders:
             agency = spider.get("agency")
-            if agency and (program_id := find_program_for_agency(agency, backlog_table)):
+            if agency and (
+                program_id := find_program_for_agency(agency, backlog_table)
+            ):
                 break
 
         result = sync_to_airtable(spiders, slugs_table, slugs_table_records, program_id)
@@ -211,7 +213,6 @@ def main():
     print(
         f"[INFO] Skipped {len(overall['skipped'])} (already up to date): {overall['skipped']}"  # noqa
     )
-
 
 
 if __name__ == "__main__":

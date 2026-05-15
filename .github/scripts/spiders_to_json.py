@@ -7,7 +7,7 @@ written to a fixed path so a separate, privileged workflow can pick it
 up and do the actual Airtable writes.
 
 Usage:
-    python extract_spiders_to_json.py <output_path> <spider_file> [...spider_files]
+    python spiders_to_json.py <output_path> <spider_file> [...spider_files]
 
 Output JSON shape:
     {
