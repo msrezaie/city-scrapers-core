@@ -27,6 +27,10 @@ PROGRAM_FIELD = "Program"
 BACKLOG_AGENCY_FIELD = "Agency name"
 BACKLOG_PROGRAM_LOOKUP_FIELD = "Program"
 
+# Validation limits
+MAX_FILES = 10  # PR can't touch more than this many spider files
+MAX_SPIDERS_PER_FILE = 200  # spider_configs lists shouldn't go above this
+
 
 def required_config(key: str) -> str:
     value = config(key, default="")
@@ -45,6 +49,8 @@ def validate_artifact(data) -> list[dict]:
     files = data["files"]
     if not isinstance(files, list):
         sys.exit("[ERROR] Invalid artifact: 'files' is not a list")
+    if len(files) > MAX_FILES:
+        sys.exit(f"[ERROR] Too many files ({len(files)} > {MAX_FILES})")
 
     cleaned = []
     for entry in files:
@@ -53,6 +59,10 @@ def validate_artifact(data) -> list[dict]:
         spiders = entry.get("spiders")
         if not isinstance(spiders, list):
             continue
+        if len(spiders) > MAX_SPIDERS_PER_FILE:
+            sys.exit(
+                f"[ERROR] Too many spiders in artifact ({len(spiders)} > {MAX_SPIDERS_PER_FILE})"
+            )
 
         clean_spiders = []
         for s in spiders:

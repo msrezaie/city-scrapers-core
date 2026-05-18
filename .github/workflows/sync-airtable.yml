@@ -35,6 +35,9 @@ on:
 
 jobs:
   sync:
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-latest
     steps:
       - name: Check out city-scrapers-core
