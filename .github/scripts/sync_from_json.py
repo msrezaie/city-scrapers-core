@@ -61,7 +61,7 @@ def validate_artifact(data) -> list[dict]:
             continue
         if len(spiders) > MAX_SPIDERS_PER_FILE:
             sys.exit(
-                f"[ERROR] Too many spiders in artifact ({len(spiders)} > {MAX_SPIDERS_PER_FILE})"
+                f"[ERROR] Too many spiders in artifact ({len(spiders)} > {MAX_SPIDERS_PER_FILE})"  # noqa
             )
 
         clean_spiders = []
