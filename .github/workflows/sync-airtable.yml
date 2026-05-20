@@ -1,18 +1,25 @@
+# Triggered by the consumer's workflow_run stub when the parse workflow
+# completes. Runs in the base repo's context with secrets/variables
+# available. Reads the JSON artifact produced by the parse workflow and
+# writes to Airtable.
+#
+# SECURITY: This workflow never reads PR source code. It only consumes the
+# pre-parsed JSON artifact, which is validated by sync_from_json.py before
+# any Airtable calls.
+
 name: Sync spiders to Airtable (reusable)
 
 on:
   workflow_call:
     inputs:
-      python-version:
-        description: 'Python version to use'
-        required: false
-        type: string
-        default: '3.11'
       core-ref:
-        description: 'Branch/tag/SHA of city-scrapers-core to use for the script'
         required: false
         type: string
         default: 'main'
+      parse-run-id:
+        description: 'ID of the parse workflow run whose artifact we should consume'
+        required: true
+        type: string
       CS_AIRTABLE_BASE_ID:
         required: true
         type: string
@@ -27,18 +34,12 @@ on:
         required: true
 
 jobs:
-  sync-airtable:
+  sync:
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-latest
     steps:
-      # Check out the consumer repo (the one whose PR triggered this).
-      # No `repository:` means default — the caller's repo.
-      - name: Check out consumer repo
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      # Check out city-scrapers-core into a sibling directory so the script
-      # is available to run.
       - name: Check out city-scrapers-core
         uses: actions/checkout@v4
         with:
@@ -46,23 +47,27 @@ jobs:
           ref: ${{ inputs.core-ref }}
           path: .city-scrapers-core
 
-      - uses: tj-actions/changed-files@v45
-        id: changed
+      - name: Download parse artifact
+        uses: actions/download-artifact@v4
         with:
-          files: city_scrapers/spiders/**.py
+          name: spiders-artifact
+          path: artifact
+          # The artifact was produced by the parse run, not this run.
+          run-id: ${{ inputs.parse-run-id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ inputs.python-version }}
+          python-version: '3.11'
 
       - name: Install script dependencies
         run: pip install pyairtable python-decouple
 
-      - name: Sync spiders to Airtable
+      - name: Sync to Airtable
         env:
           CS_AIRTABLE_PAT: ${{ secrets.CS_AIRTABLE_PAT }}
           CS_AIRTABLE_BASE_ID: ${{ inputs.CS_AIRTABLE_BASE_ID }}
           CS_SLUGS_TABLE_ID: ${{ inputs.CS_SLUGS_TABLE_ID }}
           CS_BACKLOG_TABLE_ID: ${{ inputs.CS_BACKLOG_TABLE_ID }}
-        run: python .city-scrapers-core/.github/scripts/sync_airtable.py ${{ steps.changed.outputs.all_changed_files }}
+        run: python .city-scrapers-core/.github/scripts/sync_from_json.py artifact/spiders.json

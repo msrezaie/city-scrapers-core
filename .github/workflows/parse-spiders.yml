@@ -1,0 +1,58 @@
+# Runs on `pull_request` and never receives secrets. Its only job is to
+# parse changed spider files and upload a JSON artifact for the downstream
+# workflow to consume.
+
+name: Parse spiders (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      core-ref:
+        required: false
+        type: string
+        default: 'main'
+
+jobs:
+  parse:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out consumer repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check out city-scrapers-core
+        uses: actions/checkout@v4
+        with:
+          repository: City-Bureau/city-scrapers-core
+          ref: ${{ inputs.core-ref }}
+          path: .city-scrapers-core
+
+      - uses: tj-actions/changed-files@v45
+        id: changed
+        with:
+          files: city_scrapers/spiders/**.py
+
+      - name: Set up Python
+        if: steps.changed.outputs.any_changed == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Extract spiders to JSON
+        if: steps.changed.outputs.any_changed == 'true'
+        run: |
+          mkdir -p artifact
+          python .city-scrapers-core/.github/scripts/spiders_to_json.py \
+            artifact/spiders.json \
+            ${{ steps.changed.outputs.all_changed_files }}
+
+      - name: Upload artifact
+        if: steps.changed.outputs.any_changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: spiders-artifact
+          path: artifact/
+          retention-days: 1
