@@ -7,6 +7,7 @@ running on a fork PR's code. Validate before doing anything with it.
 """
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -15,21 +16,32 @@ from pyairtable import Api
 from pyairtable.formulas import match
 
 """
-AirTable field names for the slug and agency name.
-These should match the field names in the AirTable base.
+AirTable field IDs.
+Comment annotation: Field name / Table name
 """
-# Spiders table field names
-SLUG_FIELD = "Slug"
-AGENCY_FIELD = "Agency name"
-PROGRAM_FIELD = "Program"
 
-# Backlog table field names
-BACKLOG_AGENCY_FIELD = "Agency name"
-BACKLOG_PROGRAM_LOOKUP_FIELD = "Program"
+# Slug / 'Spider / subscraper QA tracker'
+SLUG_FIELD_ID = "fld7JlLahrbFlmLMk"
+# Program / 'Spider / subscraper QA tracker'
+PROGRAM_FIELD_ID = "fld83rWaVrVoKBNve"
+# Agency name / 'Spider / subscraper QA tracker'
+AGENCY_FIELD_ID = "fldM4p8WnXekL1IhH"
+
+# Agency name / Backlog
+BACKLOG_AGENCY_FIELD_ID = "fld30MsEoonhPTP4Z"
+# Agency name / Backlog
+BACKLOG_PROGRAM_LOOKUP_FIELD_ID = "fldDJcsvXPlvbK5FY"
 
 # Validation limits
 MAX_FILES = 10  # PR can't touch more than this many spider files
 MAX_SPIDERS_PER_FILE = 200  # spider_configs lists shouldn't go above this
+
+# Airtable record ID format constraint
+AIRTABLE_RECORD_ID = re.compile(r"^rec[A-Za-z0-9]{14}$")
+
+
+def is_valid_record_id(value) -> bool:
+    return isinstance(value, str) and bool(AIRTABLE_RECORD_ID.match(value))
 
 
 def required_config(key: str) -> str:
@@ -96,17 +108,26 @@ def find_program_for_agency(agency: str, backlog_table) -> str | None:
     the looked-up Program name doesn't resolve to a Programs record.
     """
     backlog_records = backlog_table.all(
-        formula=match({BACKLOG_AGENCY_FIELD: agency}),
-        fields=[BACKLOG_PROGRAM_LOOKUP_FIELD],
+        formula=match({BACKLOG_AGENCY_FIELD_ID: agency}),
+        fields=[BACKLOG_PROGRAM_LOOKUP_FIELD_ID],
         max_records=1,
+        use_field_ids=True,
     )
     if not backlog_records:
         return None
     # Lookup fields always return a list, even when the source link is single.
-    program_links = backlog_records[0]["fields"].get(BACKLOG_PROGRAM_LOOKUP_FIELD) or []
+    program_links = (
+        backlog_records[0]["fields"].get(BACKLOG_PROGRAM_LOOKUP_FIELD_ID) or []
+    )
     if not program_links:
         return None
-    return program_links[0]
+    candidate = program_links[0]
+    if not is_valid_record_id(candidate):
+        print(
+            f"[INFO] Backlog returned non-record-ID value for {agency!r}: {candidate!r}"
+        )
+        return None
+    return candidate
 
 
 def sync_to_airtable(
@@ -139,9 +160,9 @@ def sync_to_airtable(
     """
     existing: dict[str, tuple[str, str]] = {}
     for r in table_records:
-        agency = r["fields"].get(AGENCY_FIELD)
+        agency = r["fields"].get(AGENCY_FIELD_ID)
         if agency:
-            existing[agency] = (r["id"], r["fields"].get(SLUG_FIELD, ""))
+            existing[agency] = (r["id"], r["fields"].get(SLUG_FIELD_ID, ""))
 
     to_create, to_update, skipped = [], [], []
 
@@ -158,25 +179,28 @@ def sync_to_airtable(
             if current_slug == slug:
                 skipped.append(agency)
             else:
-                fields = {SLUG_FIELD: slug}
+                fields = {SLUG_FIELD_ID: slug}
                 if program_record_id:
-                    fields[PROGRAM_FIELD] = [program_record_id]
+                    fields[PROGRAM_FIELD_ID] = [program_record_id]
                 to_update.append({"id": record_id, "fields": fields})
         else:
-            fields = {SLUG_FIELD: slug, AGENCY_FIELD: agency}
+            fields = {SLUG_FIELD_ID: slug, AGENCY_FIELD_ID: agency}
             if program_record_id:
-                fields[PROGRAM_FIELD] = [program_record_id]
+                fields[PROGRAM_FIELD_ID] = [program_record_id]
             to_create.append(fields)
             existing[agency] = ("", slug)
 
     created = []
     if to_create:
-        created = [r["fields"].get(AGENCY_FIELD) for r in table.batch_create(to_create)]
+        created = [
+            r["fields"].get(AGENCY_FIELD_ID)
+            for r in table.batch_create(to_create, use_field_ids=True)
+        ]
 
     updated = []
     if to_update:
-        table.batch_update(to_update)
-        updated = [u["fields"][SLUG_FIELD] for u in to_update]
+        table.batch_update(to_update, use_field_ids=True)
+        updated = [u["fields"][SLUG_FIELD_ID] for u in to_update]
 
     return {"created": created, "updated": updated, "skipped": skipped}
 
@@ -198,7 +222,10 @@ def main():
     slugs_table = api.table(base_id, slugs_table_name)
     backlog_table = api.table(base_id, backlog_table_name)
 
-    slugs_table_records = slugs_table.all(fields=[SLUG_FIELD, AGENCY_FIELD])
+    slugs_table_records = slugs_table.all(
+        fields=[SLUG_FIELD_ID, AGENCY_FIELD_ID],
+        use_field_ids=True,
+    )
 
     overall = {"created": [], "updated": [], "skipped": []}
     for entry in file_entries:
