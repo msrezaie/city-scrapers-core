@@ -197,6 +197,7 @@ def sync_to_airtable(
 
     Returns a summary: {'created': [...], 'updated': [...]}.
     """
+    transfer_values = transfer_values or {}
     extra_fields: dict[str, object] = {}
 
     program_id = transfer_values.get("program_id")
